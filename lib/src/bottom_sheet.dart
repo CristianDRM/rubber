@@ -47,7 +47,7 @@ class _RubberBottomSheetState extends State<RubberBottomSheet> with TickerProvid
 
   double get _bottomSheetHeight {
     final RenderBox renderBox = _keyWidget.currentContext.findRenderObject();
-    return renderBox.size.height;
+    return renderBox.size?.height ?? 400;
   }
 
   RubberAnimationController get _controller => widget.animationController;
