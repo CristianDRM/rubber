@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:rubber/rubber.dart';
 
-class ScrollPage extends StatefulWidget {
+class DismissablePage extends StatefulWidget {
 
-  ScrollPage({Key key}) : super(key: key);
+  DismissablePage({Key key}) : super(key: key);
 
   @override
-  _ScrollPageState createState() => _ScrollPageState();
+  _DismissablePageState createState() => _DismissablePageState();
 
 }
 
-class _ScrollPageState extends State<ScrollPage> with SingleTickerProviderStateMixin {
+class _DismissablePageState extends State<DismissablePage> with SingleTickerProviderStateMixin {
 
   RubberAnimationController _controller;
 
@@ -20,8 +20,10 @@ class _ScrollPageState extends State<ScrollPage> with SingleTickerProviderStateM
   void initState() {
     _controller = RubberAnimationController(
         vsync: this,
-        halfBoundValue: AnimationControllerValue(percentage: 0.5),
-        duration: Duration(milliseconds: 200)
+        lowerBoundValue: AnimationControllerValue(percentage: 0.0),
+        upperBoundValue: AnimationControllerValue(percentage: 1),
+        duration: Duration(milliseconds: 200),
+        dismissable: true
     );
     super.initState();
   }
@@ -30,19 +32,24 @@ class _ScrollPageState extends State<ScrollPage> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Scrolling",style: TextStyle(color: Colors.cyan[900]),),
+        title: Text("Dismissable",style: TextStyle(color: Colors.cyan[900]),),
       ),
       body: Container(
         child: RubberBottomSheet(
+          onDragEnd: (){
+            // If we want to dismiss with different rules
+            print("onDragEnd");
+          },
           scrollController: _scrollController,
           lowerLayer: _getLowerLayer(),
-          header: Container(
-            color: Colors.yellow,
-          ),
-          headerHeight: 60,
           upperLayer: _getUpperLayer(),
           animationController: _controller,
         ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: (){
+          _controller.expand();
+        },
       ),
     );
   }
@@ -66,7 +73,7 @@ class _ScrollPageState extends State<ScrollPage> with SingleTickerProviderStateM
         itemBuilder: (BuildContext context, int index) {
           return ListTile(title: Text("Item $index"));
         },
-        itemCount: 100
+        itemCount: 20
       ),
     );
   }

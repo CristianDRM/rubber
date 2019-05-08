@@ -1,3 +1,25 @@
+## [0.3.0] - 04/05/2019
+
+* Added substituteScrollController to change the scrollController without setState()
+* Fixed issue headerHeight from last release
+* Improved dismissable functionalities
+* Added dragFriction to change the friction when scrolling over bounds
+
+## [0.2.9] - 04/05/2019
+
+* Fixed header height without header
+
+## [0.2.8] - 02/05/2019
+
+* Optimized status updates
+* Fixed heder overflow, now parameters header and headerHeight are needed
+* Improved stability
+
+## [0.2.7] - 15/03/2019
+
+* Changed "value" parameter name to "initialValue" in RubberAnimationController
+* Added dismiss() method
+
 ## [0.2.6] - 12/01/2019
 
 * Fixed height factor < 0 crash

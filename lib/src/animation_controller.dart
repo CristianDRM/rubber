@@ -7,10 +7,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/semantics.dart';
 import 'package:rubber/src/spring_description/damping_ratio.dart';
 import 'package:rubber/src/spring_description/stiffness.dart';
-import 'package:rubber/src/spring_simulation.dart';
 
 export 'package:flutter/scheduler.dart' show TickerFuture, TickerCanceled;
-
 
 final SpringDescription _kFlingSpringDefaultDescription = SpringDescription.withDampingRatio(
   mass: 1,
@@ -27,13 +25,14 @@ const Tolerance _kFlingTolerance = Tolerance(
 enum AnimationState {
   expanded,
   half_expanded,
-  collapsed
+  collapsed,
+  dismissed
 }
 
 class AnimationControllerValue {
   double percentage;
   double pixel;
-  AnimationControllerValue({this.percentage = 0.0, this.pixel});
+  AnimationControllerValue({this.percentage, this.pixel});
   @override
   String toString() {
     return "percentace: $percentage pixel: $pixel";
@@ -41,7 +40,7 @@ class AnimationControllerValue {
 }
 
 class RubberAnimationController extends Animation<double>
-    with AnimationEagerListenerMixin, AnimationLocalListenersMixin, AnimationLocalStatusListenersMixin {
+  with AnimationEagerListenerMixin, AnimationLocalListenersMixin, AnimationLocalStatusListenersMixin {
 
   /// Creates an animation controller.
   ///
@@ -70,20 +69,22 @@ class RubberAnimationController extends Animation<double>
   /// * `vsync` is the [TickerProvider] for the current context. It can be
   ///   changed by calling [resync]. It is required and must not be null. See
   ///   [TickerProvider] for advice on obtaining a ticker provider.
-  ///
+  
   RubberAnimationController({
     this.lowerBoundValue,
     this.halfBoundValue,
     this.upperBoundValue,
     this.dismissable = false,
-    double value,
+    this.initialValue,
     this.duration,
     this.debugLabel,
     this.animationBehavior = AnimationBehavior.normal,
     springDescription,
     @required TickerProvider vsync,
   }) : assert(vsync != null) {
+    
     if(springDescription!=null) _springDescription = springDescription;
+
     _ticker = vsync.createTicker(_tick);
     if(lowerBoundValue == null){
       lowerBoundValue = AnimationControllerValue(percentage: 0.1);
@@ -91,7 +92,9 @@ class RubberAnimationController extends Animation<double>
     if(upperBoundValue == null){
       upperBoundValue = AnimationControllerValue(percentage: 0.9);
     }
-    _internalSetValue(value ?? lowerBound);
+    if(initialValue != null || lowerBound != null) {
+      _internalSetValue(initialValue ?? lowerBound);
+    }
   }
 
   /// The value at which this animation is collapsed.
@@ -144,7 +147,10 @@ class RubberAnimationController extends Animation<double>
 
   Simulation _simulation;
 
-  AnimationState animationState;
+  ValueNotifier<AnimationState> animationState = ValueNotifier(AnimationState.collapsed);
+
+  /// Initial value of the controller in percentage
+  double initialValue;
 
   /// The current value of the animation.
   ///
@@ -156,7 +162,8 @@ class RubberAnimationController extends Animation<double>
   /// listeners.
   @override
   double get value => _value;
-  double _value;
+  double _value = 0.0;
+
   /// Stops the animation controller and sets the current value of the
   /// animation.
   ///
@@ -169,26 +176,36 @@ class RubberAnimationController extends Animation<double>
     stop();
     _internalSetValue(newValue);
     notifyListeners();
-    _checkStateChanged();
+    //_checkState();
   }
-
+  
   /// Sets the controller's value to [lowerBound], stopping the animation (if
   /// in progress), and resetting to its beginning point, or dismissed state.
   void reset() {
-    value = lowerBound;
+    value = 0.0;
   }
 
+  double _height=0.0;
   set height(double value) {
+    _height = value;
+    pixelValuesToPercentage();
+    value = _value;
+  }
+
+  void pixelValuesToPercentage() {
+    // sets initial value if lowerbound has only pixel value
+    if(initialValue == null && lowerBound == null) {
+      _value = lowerBoundValue.pixel / _height;
+    }
     if(lowerBoundValue.pixel != null) {
-      lowerBoundValue.percentage = lowerBoundValue.pixel / value;
+      lowerBoundValue.percentage = lowerBoundValue.pixel / _height;
     }
     if(halfBoundValue!= null && halfBoundValue.pixel != null) {
-      halfBoundValue.percentage = halfBoundValue.pixel / value;
+      halfBoundValue.percentage = halfBoundValue.pixel / _height;
     }
     if(upperBoundValue.pixel != null) {
-      upperBoundValue.percentage = upperBoundValue.pixel / value;
+      upperBoundValue.percentage = upperBoundValue.pixel / _height;
     }
-    _animateToInternal(lowerBound);
   }
 
   /// The rate of change of [value] per second.
@@ -203,12 +220,12 @@ class RubberAnimationController extends Animation<double>
 
   void _internalSetValue(double newValue) {
     _value = newValue;
-    if (_value == lowerBound || _value == halfBound || _value == upperBound || _value == 0) {
+    /*if (_value == lowerBound || _value == halfBound || _value == upperBound || _value == 0.0) {
       _status = AnimationStatus.completed;
     } else {
       _status = AnimationStatus.forward;
     }
-    _checkStateChanged();
+    _checkState();*/
   }
 
   /// The amount of time that has passed between the time the animation started
@@ -226,17 +243,18 @@ class RubberAnimationController extends Animation<double>
   /// to pass. See [Ticker.muted] and [TickerMode].
   bool get isAnimating => _ticker != null && _ticker.isActive;
 
+  /// Tells if the animations is running(forward) or completed 
   @override
   AnimationStatus get status => _status;
-  AnimationStatus _status;
+  AnimationStatus _status = AnimationStatus.completed;
 
   TickerFuture expand({ double from }) {
     assert(() {
       if (duration == null) {
         throw FlutterError(
-            'AnimationController.forward() called with no default Duration.\n'
+            'AnimationController.expand() called with no default Duration.\n'
                 'The "duration" property should be set, either in the constructor or later, before '
-                'calling the forward() function.'
+                'calling the expand() function.'
         );
       }
       return true;
@@ -249,9 +267,9 @@ class RubberAnimationController extends Animation<double>
     assert(() {
       if (duration == null) {
         throw FlutterError(
-            'AnimationController.forward() called with no default Duration.\n'
+            'AnimationController.halfExpand() called with no default Duration.\n'
                 'The "duration" property should be set, either in the constructor or later, before '
-                'calling the forward() function.'
+                'calling the halfExpand() function.'
         );
       }
       return true;
@@ -264,9 +282,9 @@ class RubberAnimationController extends Animation<double>
     assert(() {
       if (duration == null) {
         throw FlutterError(
-            'AnimationController.reverse() called with no default Duration.\n'
+            'AnimationController.collapse() called with no default Duration.\n'
                 'The "duration" property should be set, either in the constructor or later, before '
-                'calling the reverse() function.'
+                'calling the collapse() function.'
         );
       }
       return true;
@@ -275,6 +293,21 @@ class RubberAnimationController extends Animation<double>
       value = from;
     return _animateToInternal(lowerBound);
   }
+  TickerFuture dismiss({ double from }) {
+    assert(() {
+      if (duration == null) {
+        throw FlutterError(
+            'AnimationController.dismiss() called with no default Duration.\n'
+                'The "duration" property should be set, either in the constructor or later, before '
+                'calling the dismiss() function.'
+        );
+      }
+      return true;
+    }());
+    if (from != null)
+      value = from;
+    return _animateToInternal(0.0);
+  }
 
   ValueNotifier<bool> visibility = ValueNotifier(true);
   void setVisibility(bool show) {
@@ -282,14 +315,22 @@ class RubberAnimationController extends Animation<double>
   }
 
   void _checkState() {
-    if(nearZero(value - lowerBound, 0.1)) {
-      animationState = AnimationState.collapsed;
+    var roundValue = double.parse(value.toStringAsFixed(2));
+    var roundLowerBound = double.parse(lowerBound.toStringAsFixed(2));
+    var roundHalfBound = 0.0;
+    if(halfBound != null) roundHalfBound = double.parse(halfBound.toStringAsFixed(2));
+    var roundUppperBound = double.parse(upperBound.toStringAsFixed(2));
+    if(roundValue == roundLowerBound) {
+      animationState.value = AnimationState.collapsed;
     }
-    else if(halfBound!= null && nearZero(value - halfBound, 0.1)) {
-      animationState = AnimationState.half_expanded;
+    else if(halfBound != null && roundValue == roundHalfBound) {
+      animationState.value = AnimationState.half_expanded;
     }
-    else if(nearZero(value - upperBound, 0.1)) {
-      animationState = AnimationState.expanded;
+    else if(roundValue == roundUppperBound) {
+      animationState.value = AnimationState.expanded;
+    } 
+    else if(roundValue == 0.0) {
+      animationState.value = AnimationState.dismissed;
     }
   }
 
@@ -328,11 +369,11 @@ class RubberAnimationController extends Animation<double>
     stop();
     if (simulationDuration == Duration.zero) {
       if (value != target) {
-        _value = target.clamp(lowerBound, upperBound);
+        _value = target;
         notifyListeners();
       }
       _status = AnimationStatus.completed;
-      _checkStateChanged();
+      _checkState();
       return TickerFuture.complete();
     }
     assert(simulationDuration > Duration.zero);
@@ -348,6 +389,8 @@ class RubberAnimationController extends Animation<double>
         return halfBound;
       case AnimationState.expanded:
         return upperBound;
+      case AnimationState.dismissed:
+        return 0.0;
     }
     return 1.0;
   }
@@ -355,7 +398,7 @@ class RubberAnimationController extends Animation<double>
   final double launchSpeed = 7;
   TickerFuture launchTo(AnimationState targetState) {
     final targetBound = getBoundFromState(targetState);
-    final currentBound = getBoundFromState(animationState);
+    final currentBound = getBoundFromState(animationState.value);
     final direction = targetBound < currentBound ? -1.0 : 1.0;
     return launch(min(targetBound,currentBound), max(targetBound,currentBound),velocity: launchSpeed*(direction));
   }
@@ -375,17 +418,16 @@ class RubberAnimationController extends Animation<double>
           break;
       }
     }
-    var dismissing = false;
-    if(target == lowerBound && dismissable) dismissing = true;
+    /*var dismissing = false;
+    if(target == lowerBound && dismissable) dismissing = true;*/
 
-    final Simulation simulation = RubberSpringSimulation(dismissing,_springDescription, value, target, velocity * scale)
+    final Simulation simulation = SpringSimulation(_springDescription, value, target, velocity * scale)
       ..tolerance = _kFlingTolerance;
     return animateWith(simulation);
   }
 
   TickerFuture fling(double from, double to, { double velocity = 1.0, AnimationBehavior animationBehavior }) {
     final double target = velocity < 0.0 ? from : to;
-    //print("animationState $animationState from: $from, to: $to, target: $target velocity: $velocity, value: $value");
 
     double scale = 1.0;
     final AnimationBehavior behavior = animationBehavior ?? this.animationBehavior;
@@ -399,9 +441,9 @@ class RubberAnimationController extends Animation<double>
       }
     }
 
-    var dismissing = false;
-    if(target == lowerBound && dismissable) dismissing = true;
-    final Simulation simulation = RubberSpringSimulation(dismissing,_springDescription, value, target, velocity * scale)
+    /*var dismissing = false;
+    if(target == lowerBound && dismissable) dismissing = true;*/
+    final Simulation simulation = SpringSimulation(_springDescription, value, target, velocity * scale)
       ..tolerance = _kFlingTolerance;
     return animateWith(simulation);
   }
@@ -422,7 +464,7 @@ class RubberAnimationController extends Animation<double>
     _value = simulation.x(0.0);
     final TickerFuture result = _ticker.start();
     _status = AnimationStatus.forward;
-    _checkStateChanged();
+    notifyStatusListeners(_status);
     return result;
   }
 
@@ -456,27 +498,16 @@ class RubberAnimationController extends Animation<double>
     super.dispose();
   }
 
-  AnimationState _lastReportedState = AnimationState.collapsed;
-  void _checkStateChanged() {
-    _checkState();
-    _checkCurrentState();
-  }
-  void _checkCurrentState() {
-    if (_lastReportedState != animationState) {
-      _lastReportedState = animationState;
-      notifyStatusListeners(status);
-    }
-  }
-
   void _tick(Duration elapsed) {
     _lastElapsedDuration = elapsed;
     final double elapsedInSeconds = elapsed.inMicroseconds.toDouble() / Duration.microsecondsPerSecond;
     assert(elapsedInSeconds >= 0.0);
-    _value = _simulation.x(elapsedInSeconds).clamp(0.0, 1.0);
+    _value = _simulation.x(elapsedInSeconds);
     if (_simulation.isDone(elapsedInSeconds)) {
       _status = AnimationStatus.completed;
+      notifyStatusListeners(_status);
       stop();
-      _checkStateChanged();
+      _checkState();
     }
     notifyListeners();
   }
@@ -506,11 +537,6 @@ class _InterpolationSimulation extends Simulation {
   @override
   double x(double timeInSeconds) {
     final double t = (timeInSeconds / _durationInSeconds).clamp(0.0, 1.0);
-    if (t == 0.0)
-      return _begin;
-    else if (t == 1.0)
-      return _end;
-    else
       return _begin + (_end - _begin) * _curve.transform(t);
   }
 
